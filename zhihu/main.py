@@ -4,6 +4,7 @@ import logging
 import requests
 from bs4 import  BeautifulSoup
 import time
+import re
 try:
     import cookielib
 except:
@@ -13,8 +14,11 @@ parser_logger = logging.getLogger("zhihu_crawler")
 parser_logger.setLevel(logging.INFO)
 
 FOLLOWERS_URL = "https://m.zhihu.com/people/{}/followers"
+FOLLOWERS_URL_2= "https://m.zhihu.com/node/ProfileFollowersListV2"
 TOPICS_URL = "https://m.zhihu.com/people/{}/topics"
 USER_DETAIL_INFO_URL = "https://m.zhihu.com/people/{}/about"
+
+
 
 agent = 'Mozilla/5.0 (Windows NT 5.1; rv:33.0) Gecko/20100101 Firefox/33.0'
 headers = {
@@ -81,40 +85,59 @@ def get_user_hashid(user_id):
     # zh-profile-follows-list > div
 
     follwer_url =FOLLOWERS_URL.format(user_id)
-    page_raw = session.get(follwer_url,headers = headers)
-    page_bs = BeautifulSoup(page_raw.text,"lxml")
+    page_raw = session.get(follwer_url,headers = headers).text
+    page_bs = BeautifulSoup(page_raw,"lxml")
     zh_general_list = page_bs.select("#zh-profile-follows-list > .zh-general-list")
     a = json.loads(zh_general_list[0]["data-init"])
     hash_id = a["params"]["hash_id"]
     parser_logger.warning(hash_id)
-    return hash_id
+
+    raw_xsrf = re.findall('xsrf(.*)', page_raw)
+    _xsrf = raw_xsrf[0][9:-3]  # _xsrf
+    print("xsrf", _xsrf)
+
+    raw_hash_id = re.findall('hash_id(.*)', page_raw)
+    hash_id_1 = raw_hash_id[0][14:46]  # hash_id
+    print("raw hash id from re ", hash_id_1 , hash_id)
+    raw_xsrf = re.findall('xsrf(.*)', page_raw)
+    _xsrf = raw_xsrf[0][9:-3]  # _xsrf
+
+    return hash_id , _xsrf
 
 
 def get_followers(user_id = "li-yan-liang-24", total_followers = 0 ):
     """
+
     input user id, using beautifulsoup to parse the page and to extract the follower ids
     :param user_id:
     :return: the list of the follower ids
     """
 
-    hash_id = get_user_hashid(user_id)
+    hash_id, _xsrf = get_user_hashid(user_id)
     total_followers = int(total_followers)
     if total_followers <= 0:
         parser_logger.warning("the user "+ user_id+" has no one followed ")
     else :
-        follower_crawled_num = 0
+        follower_crawled_num = 20
         followers_url = FOLLOWERS_URL.format(user_id)
         parser_logger.warning("total followers is "+ str(total_followers))
+
         while follower_crawled_num < total_followers:
-            post_data = {
-                "method":"next",
-                "params":{
-                    "offset":follower_crawled_num,
+
+            params = {
+                    "offset": str(follower_crawled_num),
                     "order_by":"created",
                     "hash_id":hash_id,
                 }
+            post_data = {
+                "method":"next",
+                "params": json.dumps(params)
+                # "_xsrf": _xsrf
             }
-            r = requests.post(followers_url, data= post_data, headers= headers)
+
+            print(post_data)
+
+            r = requests.post(FOLLOWERS_URL_2, data= post_data, headers= headers)
             print(r)
             print(r.text)
             follower_crawled_num += 10
