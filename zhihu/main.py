@@ -10,6 +10,10 @@ try:
 except:
     import http.cookiejar as cookielib
 
+from selenium import webdriver
+import os
+
+
 parser_logger = logging.getLogger("zhihu_crawler")
 parser_logger.setLevel(logging.INFO)
 
@@ -29,11 +33,13 @@ headers = {
 
 session = requests.session()
 session.cookies = cookielib.LWPCookieJar(filename='cookies')
+
 try:
     session.cookies.load(ignore_discard=True)
 except:
     parser_logger.error("Cookie 未能加载")
 
+print("session cookies", session.cookies)
 
 def run():
     get_user_info("s.invalid")
@@ -58,7 +64,7 @@ def get_user_info(user_id = "li-yan-liang-24"):
 
     url = USER_DETAIL_INFO_URL.format(user_id)
     page_raw = session.get(url,headers=headers, allow_redirects=False)
-    page_bs = BeautifulSoup(page_raw.text,"lxml")
+    page_bs = BeautifulSoup(page_raw.text,"html.parser")
 
     nick_name = page_bs.select("div.ProfileCard.zm-profile-details-wrap > div.zm-profile-section-head > span > a")[0].text.strip("\n")
     user_info["nick"] = nick_name
@@ -86,7 +92,7 @@ def get_user_hashid(user_id):
 
     follwer_url =FOLLOWERS_URL.format(user_id)
     page_raw = session.get(follwer_url,headers = headers).text
-    page_bs = BeautifulSoup(page_raw,"lxml")
+    page_bs = BeautifulSoup(page_raw,"html.parser")
     zh_general_list = page_bs.select("#zh-profile-follows-list > .zh-general-list")
     a = json.loads(zh_general_list[0]["data-init"])
     hash_id = a["params"]["hash_id"]
@@ -115,33 +121,54 @@ def get_followers(user_id = "li-yan-liang-24", total_followers = 0 ):
 
     hash_id, _xsrf = get_user_hashid(user_id)
     total_followers = int(total_followers)
-    if total_followers <= 0:
-        parser_logger.warning("the user "+ user_id+" has no one followed ")
-    else :
-        follower_crawled_num = 20
-        followers_url = FOLLOWERS_URL.format(user_id)
-        parser_logger.warning("total followers is "+ str(total_followers))
 
-        while follower_crawled_num < total_followers:
+    # if total_followers <= 0:
+    #     parser_logger.warning("the user "+ user_id+" has no one followed ")
+    # else :
+    #     follower_crawled_num = 20
+    #     followers_url = FOLLOWERS_URL.format(user_id)
+    #     parser_logger.warning("total followers is "+ str(total_followers))
+    #
+    #     while follower_crawled_num < total_followers:
+    #
+    #         params = {
+    #                 "offset": str(follower_crawled_num),
+    #                 "order_by":"created",
+    #                 "hash_id":hash_id,
+    #             }
+    #         post_data = {
+    #             "method":"next",
+    #             "params": json.dumps(params)
+    #             # "_xsrf": _xsrf
+    #         }
+    #
+    #         print(post_data)
+    #
+    #         r = requests.post(FOLLOWERS_URL_2, data= post_data, headers= headers)
+    #         print(r)
+    #         print(r.text)
+    #         follower_crawled_num += 10
+    #         time.sleep(5)
 
-            params = {
-                    "offset": str(follower_crawled_num),
-                    "order_by":"created",
-                    "hash_id":hash_id,
-                }
-            post_data = {
-                "method":"next",
-                "params": json.dumps(params)
-                # "_xsrf": _xsrf
-            }
+    ## TODO: facing a problem with this api, the post method is not the same as the original
+    ## so changing to the new approach by real browser emulation
 
-            print(post_data)
+    url = FOLLOWERS_URL.format(user_id)
+    chromedriver = "/Users/mac/chromedriver"
+    os.environ["webdriver.chrome.driver"] = chromedriver
 
-            r = requests.post(FOLLOWERS_URL_2, data= post_data, headers= headers)
-            print(r)
-            print(r.text)
-            follower_crawled_num += 10
-            time.sleep(5)
+    parser_logger.info(url)
+
+    browser = webdriver.Chrome(chromedriver)
+    test = cookielib.LWPCookieJar(filename='cookies').load(ignore_discard=True)
+    print("cookies :",test)
+    # browser.add_cookie(test)
+    # content = browser.get(url)
+    # print(url,content)
+
+
+
+
 
 if __name__ == "__main__":
     run()
